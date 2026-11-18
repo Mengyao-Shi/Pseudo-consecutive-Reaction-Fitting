@@ -1,0 +1,295 @@
+print("=" * 60)
+print("  开始运行 · Pseudo-consecutive Reaction Fitting (A0 = 20 fixed) ")
+print("=" * 60)
+
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.optimize import curve_fit
+from scipy import stats
+
+plt.rcParams['mathtext.fontset'] = 'custom'
+plt.rcParams['mathtext.rm'] = 'Times New Roman'
+plt.rcParams['font.family'] = 'Times New Roman'
+plt.rcParams['axes.unicode_minus'] = False
+plt.rcParams['font.size'] = 28
+plt.rcParams['font.weight'] = 'bold'
+plt.rcParams['axes.labelweight'] = 'bold'
+plt.rcParams['axes.titleweight'] = 'bold'
+plt.rcParams['legend.fontsize'] = 28
+plt.rcParams['xtick.labelsize'] = 28
+plt.rcParams['ytick.labelsize'] = 28
+
+A0_FIXED = 20.0
+def consecutive_reaction(t, k1, k2):
+    return (A0_FIXED * k1 / (k2 - k1)) * (np.exp(-k1 * t) - np.exp(-k2 * t))
+
+t_data = np.array([0, 1, 1.5, 2, 3, 5, 10, 20, 30, 45, 60, 80])
+B_data = np.array([0, 9.129640098, 10.96419823, 13.05784813, 15.50292067, 16.43517995, 14.74203882, 11.8951385, 8.840776333, 6.677689844, 4.374411155, 2.382607876])
+std_data = np.array([0, 0.588341349, 0.551750812, 0.1065073, 0.852710329, 0.925108655, 0.435814253, 0.598188897, 0.235825922, 0.485658291, 0.56529348, 0.412298062])
+
+p0 = [0.05, 0.005]
+params, covariance = curve_fit(consecutive_reaction, t_data, B_data,
+                               p0=p0, maxfev=30000)
+k1_fit, k2_fit = params
+A0_fit = A0_FIXED
+
+
+print("\n Fitted Parameters (A0 fixed):")
+print(f"k1 = {k1_fit:.6f} min⁻¹")
+print(f"k2 = {k2_fit:.6f} min⁻¹")
+print(f"A0 = {A0_fit:.6f} μM (fixed)")
+print("-" * 60)
+
+C = A0_fit * k1_fit / (k2_fit - k1_fit)
+print("\n Original Full Equation:")
+print(f"C = {C:.6f}")
+print(f"[B](t) = {C:.6f} * ( exp(-{k1_fit:.6f}*t) - exp(-{k2_fit:.6f}*t) )")
+print("-" * 60)
+base = k2_fit / k1_fit
+exponent = k2_fit / (k1_fit - k2_fit)
+YmaxCap = base ** exponent
+print("\n YmaxCap Calculation Result")
+print(r"Formula: $Y_{\rm maxCap}=\left(\dfrac{k_2}{k_1}\right)^{\frac{k_2}{k_1-k_2}}$")
+print(f"底数 k2/k1 = {base:.8f}")
+print(f"指数 k2/(k1−k2) = {exponent:.8f}")
+print(f"YmaxCap = {YmaxCap:.8f}")
+print("-" * 60)
+B_fit_data = consecutive_reaction(t_data, k1_fit, k2_fit)
+ss_res = np.sum((B_data - B_fit_data) ** 2)
+ss_tot = np.sum((B_data - np.mean(B_data)) ** 2)
+r_squared = 1 - ss_res / ss_tot
+
+n = len(t_data)
+p_num = 2
+dof = n - p_num
+
+print(f"\n拟合决定系数 R² = {r_squared:.6f}")
+print("-" * 60)
+adj_r_squared = 1 - (1 - r_squared) * (n - 1) / dof
+print("\n (i) Goodness of Fit:")
+print(f"R²           = {r_squared:.6f}")
+print(f"Adjusted R²  = {adj_r_squared:.6f}")
+print("-" * 60)
+rmse = np.sqrt(ss_res / dof)
+print("\n (ii) Root Mean Square Error (RMSE):")
+print(f"RMSE = {rmse:.6f} μM")
+print("-" * 60)
+alpha = 0.05
+t_crit = stats.t.ppf(1 - alpha / 2, dof)
+se_params = np.sqrt(np.diag(covariance))
+ci_lower = params - t_crit * se_params
+ci_upper = params + t_crit * se_params
+
+print("\n (iii) 95% Confidence Intervals (nonlinear least-squares):")
+print(f"{'Param':<8}{'Value':<14}{'Std. Error':<16}{'95% CI Lower':<16}{'95% CI Upper':<16}")
+print("-" * 70)
+for name, val, se, lo, hi in zip(["k1", "k2"], params, se_params, ci_lower, ci_upper):
+    print(f"{name:<8}{val:<14.6f}{se:<16.6f}{lo:<16.6f}{hi:<16.6f}")
+print("-" * 70)
+print("\n (iii-b) Standard Errors and Associated Uncertainty Ranges:")
+print("Definitions:")
+print("  SE          = standard error from covariance matrix")
+print("  ±1SE        ≈ 68.3% confidence interval")
+print("  ±1.96SE     ≈ 95.0% confidence interval (normal approximation)")
+print(f"  ±t·SE       = exact 95% CI using Student's t (dof = {dof})")
+print("-" * 90)
+print(f"{'Param':<8}{'Value':<12}{'SE':<12}{'±1SE':<20}{'±1.96SE':<22}{'±t·SE (95%)':<24}")
+print("-" * 90)
+for name, val, se in zip(["k1", "k2"], params, se_params):
+    lo1, hi1 = val - se, val + se
+    lo196, hi196 = val - 1.96 * se, val + 1.96 * se
+    lot, hit = val - t_crit * se, val + t_crit * se
+    print(f"{name:<8}{val:<12.6f}{se:<12.6f}"
+          f"[{lo1:.4f}, {hi1:.4f}]{'':<4}"
+          f"[{lo196:.4f}, {hi196:.4f}]{'':<4}"
+          f"[{lot:.4f}, {hit:.4f}]")
+print("-" * 90)
+print("\n Relative uncertainty (SE / value × 100%):")
+for name, val, se in zip(["k1", "k2"], params, se_params):
+    rel = se / abs(val) * 100
+    print(f"  {name}: {rel:.3f}%")
+print("-" * 90)
+print("\n Report format (value ± SE):")
+for name, val, se in zip(["k1", "k2"], params, se_params):
+    print(f"  {name} = {val:.6f} ± {se:.6f} min⁻¹")
+print("-" * 90)
+print("\n Report format (value with 95% CI):")
+for name, val, lo, hi in zip(["k1", "k2"], params, ci_lower, ci_upper):
+    print(f"  {name} = {val:.6f} min⁻¹ (95% CI: {lo:.6f}–{hi:.6f})")
+print("-" * 90)
+relative_error = np.zeros_like(B_data)
+for i in range(1, len(B_data)):
+    relative_error[i] = np.abs(B_fit_data[i] - B_data[i]) / B_data[i] * 100
+print("\n Fitting Verification Table")
+print(f"{'Time(min)':<10} {'Exp. C-Cap':<12} {'Fit. C-Cap':<12} {'Rel. Err.(%)':<12}")
+print("-" * 60)
+for t, b_exp, b_fit, err in zip(t_data, B_data, B_fit_data, relative_error):
+    if np.isclose(b_exp, 0):
+        print(f"{t:<10.1f} {b_exp:<12.4f} {b_fit:<12.4f} {'—':<12}")
+    else:
+        print(f"{t:<10.1f} {b_exp:<12.4f} {b_fit:<12.4f} {err:<12.2f}")
+print("-" * 60)
+residuals = B_data - B_fit_data
+std_residuals = residuals / np.std(residuals, ddof=p_num)
+BOLD = '\033[1m'
+END = '\033[0m'
+
+print(f"\n{BOLD} (iv) Residual Analysis:{END}")
+print(f"{'Time(min)':<10}{'Exp.':<12}{'Fit.':<12}{'Residual':<14}{'Std. Resid.':<14}")
+print("-" * 70)
+for t, b_exp, b_fit, res, sres in zip(t_data, B_data, B_fit_data, residuals, std_residuals):
+    print(f"{t:<10.1f}{b_exp:<12.4f}{b_fit:<12.4f}{res:<14.4f}{sres:<14.4f}")
+print("-" * 70)
+mean_res = np.mean(residuals)
+corr_rt, p_corr = stats.pearsonr(t_data, residuals)
+
+signs = np.sign(residuals)
+signs[signs == 0] = 1
+runs = 1 + np.sum(signs[1:] != signs[:-1])
+n_pos = int(np.sum(signs > 0))
+n_neg = int(np.sum(signs < 0))
+
+if n_pos > 0 and n_neg > 0:
+    runs_exp = 1 + 2 * n_pos * n_neg / (n_pos + n_neg)
+    runs_std = np.sqrt(2 * n_pos * n_neg * (2 * n_pos * n_neg - n_pos - n_neg) /
+                       ((n_pos + n_neg) ** 2 * (n_pos + n_neg - 1)))
+    z_runs = (runs - runs_exp) / runs_std
+    p_runs = 2 * (1 - stats.norm.cdf(abs(z_runs)))
+else:
+    runs_exp = runs_std = z_runs = p_runs = np.nan
+print(f"\n{BOLD}--- Residual Randomness Diagnostics ---{END}")
+print(f"{BOLD}Mean residual                = {mean_res:.6f} μM{END}")
+print(f"{BOLD}Pearson r (residual vs time) = {corr_rt:.4f}  (p = {p_corr:.4f}){END}")
+print(f"{BOLD}Runs test: runs = {runs}, expected = {runs_exp:.2f}, z = {z_runs:.4f}, p = {p_runs:.4f}{END}")
+print(f"\n{BOLD} (iv-d) Pearson Correlation (Experimental vs Predicted):{END}")
+print("Definition:")
+print("  Pearson r = strength and direction of linear association between Exp. and Fit. values.")
+print("  H0: r = 0 (no linear correlation); two-sided test.")
+print("-" * 90)
+
+r_exp_fit, p_exp_fit = stats.pearsonr(B_data, B_fit_data)
+
+print(f"{BOLD}Pearson r = {r_exp_fit:.6f}, p = {p_exp_fit:.4e} (n = {n}){END}")
+print(f"{BOLD}R² (r²)   = {r_exp_fit**2:.6f}{END}")
+
+if p_exp_fit < 0.05:
+    print(f"{BOLD}>>> Pearson: Significant positive linear correlation between Experimental and Predicted (p < 0.05).{END}")
+else:
+    print(f"{BOLD}>>> Pearson: No significant linear correlation detected (p >= 0.05).{END}")
+
+print(f"{BOLD}Interpretation: A high r (close to 1) indicates strong linear agreement between predictions and measurements.{END}")
+print("-" * 90)
+if p_corr < 0.05:
+    print(f"{BOLD}>>> Correlation: Significant linear trend detected (p < 0.05).{END}")
+else:
+    print(f"{BOLD}>>> Correlation: No significant linear trend (p >= 0.05).{END}")
+if p_runs < 0.05:
+    print(f"{BOLD}>>> Runs test: Significant systematic bias detected (p < 0.05).{END}")
+else:
+    print(f"{BOLD}>>> Runs test: No significant systematic bias (p >= 0.05).{END}")
+
+print(f"{BOLD}Interpretation: p > 0.05 indicates no significant systematic bias.{END}")
+print("-" * 60)
+def jacobian_data(t_vals, params_in):
+    delta = 1e-6
+    jac = np.zeros((len(t_vals), len(params_in)))
+    for i in range(len(params_in)):
+        par_up = params_in.copy()
+        par_up[i] += delta
+        par_down = params_in.copy()
+        par_down[i] -= delta
+        y_up = consecutive_reaction(t_vals, *par_up)
+        y_down = consecutive_reaction(t_vals, *par_down)
+        jac[:, i] = (y_up - y_down) / (2 * delta)
+    return jac
+J_data = jacobian_data(t_data, params)
+se_fit_data = np.sqrt(np.diag(J_data @ covariance @ J_data.T))
+se_diff = np.sqrt(std_data ** 2 + se_fit_data ** 2)
+unc_range = t_crit * se_diff
+
+print("\n (iv-b) Pointwise Standard Errors and Uncertainty Ranges:")
+print("Definitions:")
+print("  SE(Fit.)   = standard error of the fitted value at each time point")
+print("  SE(diff)   = sqrt(Std.(Exp.)^2 + SE(Fit.)^2), combined standard error")
+print("  ±t·SE(diff) = 95% uncertainty range for the difference Exp. - Fit.")
+print("-" * 120)
+print(f"{'Time':<8}{'Exp.':<12}{'Fit.':<12}{'Residual':<12}"
+      f"{'Std.(Exp.)':<14}{'SE(Fit.)':<14}{'SE(diff)':<14}{'±t·SE(diff)':<22}")
+print("-" * 120)
+for t, b_exp, b_fit, res, s_exp, s_fit, s_diff, ur in zip(
+        t_data, B_data, B_fit_data, residuals, std_data, se_fit_data, se_diff, unc_range):
+    print(f"{t:<8.1f}{b_exp:<12.4f}{b_fit:<12.4f}{res:<12.4f}"
+          f"{s_exp:<14.4f}{s_fit:<14.4f}{s_diff:<14.4f}"
+          f"[{res - ur:.4f}, {res + ur:.4f}]")
+print("-" * 120)
+print("\n Summary of pointwise uncertainties:")
+print(f"  Mean SE(Fit.)   = {np.mean(se_fit_data):.6f} μM")
+print(f"  Max  SE(Fit.)   = {np.max(se_fit_data):.6f} μM")
+print(f"  Mean SE(diff)   = {np.mean(se_diff):.6f} μM")
+print(f"  Max  SE(diff)   = {np.max(se_diff):.6f} μM")
+print(f"  Mean ±t·SE(diff) = {np.mean(unc_range):.6f} μM")
+print(f"  Max  ±t·SE(diff) = {np.max(unc_range):.6f} μM")
+print("-" * 120)
+RSS = ss_res
+K = p_num + 1
+aic = n * np.log(RSS / n) + 2 * K
+aicc = aic + (2 * K * (K + 1)) / (n - K - 1)
+
+print("\n (v) AICc (Corrected Akaike Information Criterion):")
+print("Formula:")
+print("  AIC  = n * ln(RSS/n) + 2K")
+print("  AICc = AIC + 2K(K+1)/(n-K-1)")
+print(f"  where n = {n}, K = {K} (k1, k2 + variance), RSS = {RSS:.6f}")
+print(f"AIC  = {aic:.6f}")
+print(f"AICc = {aicc:.6f}")
+print("Note: AICc is only comparable among models fitted to the same dataset;")
+print("      a lower AICc indicates a better trade-off between fit and complexity.")
+print("-" * 60)
+
+t_fit = np.linspace(0, 80, 300)
+B_fit = consecutive_reaction(t_fit, k1_fit, k2_fit)
+
+fig, ax = plt.subplots(figsize=(12, 8))
+
+point_color = "#96BCD8"
+line_color = "#E86A6A"
+band_color = "#F8C6C6"
+def jacobian(t_vals, params_in):
+    delta = 1e-6
+    jac = np.zeros((len(t_vals), len(params_in)))
+    for i in range(len(params_in)):
+        par_up = params_in.copy()
+        par_up[i] += delta
+        par_down = params_in.copy()
+        par_down[i] -= delta
+        y_up = consecutive_reaction(t_vals, *par_up)
+        y_down = consecutive_reaction(t_vals, *par_down)
+        jac[:, i] = (y_up - y_down) / (2 * delta)
+    return jac
+
+J = jacobian(t_fit, params)
+se_fit = np.sqrt(np.diag(J @ covariance @ J.T))
+pred_err = t_crit * np.sqrt(rmse ** 2 + se_fit ** 2)
+y_upper = B_fit + pred_err
+y_lower = B_fit - pred_err
+ax.fill_between(t_fit, y_lower, y_upper, color=band_color, alpha=0.45, zorder=1)
+ax.plot(t_fit, B_fit, color=line_color, linestyle='--', linewidth=3,
+        label='Fitted curve', zorder=3)
+
+ax.errorbar(t_data, B_data, yerr=std_data, fmt='o',
+            color=point_color, mfc=point_color, mec=point_color,
+            capsize=6, markersize=18, zorder=5)
+ax.scatter([], [], color=point_color, s=160, label='Experimental data')
+
+ax.set_xlabel('Time (min)', labelpad=14.35)
+ax.set_ylabel('[Cap] (μM)', labelpad=14.35)
+
+ax.legend(loc='upper right', frameon=False)
+ax.tick_params(width=3)
+for spine in ax.spines.values():
+    spine.set_linewidth(3)
+
+plt.tight_layout()
+plt.show()
+
+print
